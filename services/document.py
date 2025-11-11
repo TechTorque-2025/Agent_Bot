@@ -212,3 +212,15 @@ class DocumentService:
                 "success": False,
                 "error": str(e)
             }
+
+
+# Singleton instance
+_document_service_instance = None
+
+
+def get_document_service() -> DocumentService:
+    """Get or create the document service singleton instance"""
+    global _document_service_instance
+    if _document_service_instance is None:
+        _document_service_instance = DocumentService()
+    return _document_service_instance

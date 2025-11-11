@@ -32,10 +32,18 @@ class VectorStoreService:
 
         try:
             # Initialize Pinecone client
+            logger.info(f"Initializing Pinecone client for index: {self.index_name}")
             self.pc = Pinecone(api_key=self.api_key)
 
-            # Check if index exists, create if not
-            self._ensure_index_exists()
+            # Check if index exists, create if not (with timeout protection)
+            try:
+                self._ensure_index_exists()
+            except Exception as idx_err:
+                logger.warning(f"Could not verify/create Pinecone index (may be network issue): {idx_err}")
+                logger.warning("Vector store will continue but may not function properly")
+                self.pc = None
+                self.index = None
+                return
 
             # Connect to index
             self.index = self.pc.Index(self.index_name)

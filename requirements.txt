@@ -1,25 +1,50 @@
-# Core FastAPI and Web Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-pydantic==2.5.3
-python-dotenv==1.0.0
+# Core FastAPI and Web Framework# Core FastAPI and Web Framework
 
-# HTTP Client
-httpx==0.26.0
-requests==2.31.0
+fastapi==0.109.0fastapi==0.109.0
 
-# LangChain and AI/ML
-langchain==0.1.6
-langchain-core==0.1.23
-langchain-google-genai==0.0.9
-google-generativeai==0.3.2
+uvicorn[standard]==0.27.0uvicorn[standard]==0.27.0
 
-# Vector Database
-pinecone-client==3.0.0
+pydantic==2.5.3pydantic==2.5.3
 
-# Embeddings
-sentence-transformers==2.3.1
-numpy==1.24.3
+python-dotenv==1.0.0python-dotenv==1.0.0
 
-# Logging and utilities
-python-multipart==0.0.6
+
+
+# HTTP Client# HTTP Client
+
+httpx==0.26.0httpx==0.26.0
+
+requests==2.31.0requests==2.31.0
+
+
+
+# LangChain and AI/ML - Version 0.1.6 for AgentExecutor compatibility# LangChain and AI/ML
+
+langchain==0.1.6langchain==0.1.6
+
+langchain-core==0.1.23langchain-core==0.1.23
+
+langchain-google-genai==0.0.9langchain-google-genai==0.0.9
+
+google-generativeai==0.3.2google-generativeai==0.3.2
+
+
+
+# Vector Database# Vector Database
+
+pinecone-client==3.0.0pinecone-client==3.0.0
+
+
+
+# Embeddings# Embeddings
+
+sentence-transformers==2.3.1sentence-transformers==2.3.1
+
+numpy==1.24.3numpy==1.24.3
+
+
+
+# Logging and utilities# Logging and utilities
+
+python-multipart==0.0.6python-multipart==0.0.6
+
