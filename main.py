@@ -51,4 +51,5 @@ async def health():
 if __name__ == "__main__":
     import uvicorn
     # Use the port defined in our settings
-    uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, reload=True)
+    # Set reload=False for production stability
+    uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, reload=False)

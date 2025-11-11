@@ -1,6 +1,6 @@
 # services/agent_core.py
 
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain.agents import AgentExecutor, initialize_agent, AgentType
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_google_genai import ChatGoogleGenerativeAI
 from config.settings import settings
@@ -48,8 +48,19 @@ class AIAgentService:
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
         
-        agent = create_tool_calling_agent(self.llm, all_tools, agent_prompt)
-        return AgentExecutor(agent=agent, tools=all_tools, verbose=True, handle_parsing_errors=True)
+        # Build an AgentExecutor using the project prompt and the available tools.
+        # Use the deprecated initialize_agent helper which returns an AgentExecutor
+        # and pass our chat prompt via agent_kwargs so the underlying agent uses it.
+        # STRUCTURED_CHAT supports multi-input tools (needed for appointment checking)
+        agent_executor = initialize_agent(
+            all_tools,
+            self.llm,
+            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+            agent_kwargs={"prompt": agent_prompt},
+            verbose=True,
+            handle_parsing_errors=True,
+        )
+        return agent_executor
 
     async def invoke_agent(
         self,
