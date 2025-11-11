@@ -1,8 +1,11 @@
-# 🤖 TechTorque AI Agent Bot Microservice
+# 🤖 TechTorque Unified AI Agent / RAG Service
 
-The `Agent_Bot` service is the **intelligence layer** of the TechTorque platform. Built with **Python** and **FastAPI**, it uses a **Gemini-powered LangChain Agent** to process natural language queries, execute actions against other microservices, and provide contextual, conversational responses to users.
+The `Agent_Bot` service is the **intelligence and interaction layer** of the TechTorque platform. It combines two critical AI functionalities:
 
-This service implements the `/api/v1/ai/chat` endpoint, connecting the `Frontend_Web` chat widget to the backend ecosystem.
+1.  **AI Agent (Tool Use):** Uses advanced reasoning to perform real-time actions against microservices (e.g., checking appointment slots, viewing user vehicle status).
+2.  **RAG (Knowledge Retrieval):** Uses a Vector Database (Pinecone) and a local embedding model to answer non-real-time questions based on structured knowledge documents (e.g., "What is your warranty policy?").
+
+Built with **Python**, **FastAPI**, and **Gemini (via LangChain)**, this service implements the `/api/v1/ai/chat` endpoint.
 
 ---
 
@@ -10,9 +13,9 @@ This service implements the `/api/v1/ai/chat` endpoint, connecting the `Frontend
 
 ### **Prerequisites**
 
-* **Python 3.10+**
-* The following microservices must be running (e.g., via Docker Compose or locally on port 8080): `Authentication`, `Appointment_Service`, `Vehicle_Service`, `Time_Logging_Service`.
-* A **Gemini API Key** is required.
+*   **Python 3.10+**
+*   **External Microservices:** The `Authentication`, `Appointment_Service`, `Vehicle_Service`, and `Project_Service` must be running.
+*   **Cloud Services:** A **Gemini API Key** and a **Pinecone Account/API Key** are required for RAG functionality.
 
 ### **1. Environment Setup**
 
@@ -20,59 +23,41 @@ This service implements the `/api/v1/ai/chat` endpoint, connecting the `Frontend
     ```bash
     cd Agent_Bot
     ```
-2.  **Create and activate the virtual environment:**
+2.  **Activate the virtual environment:**
     ```bash
-    python -m venv venv
     source venv/bin/activate  # macOS/Linux
-    .\venv\Scripts\activate   # Windows
+    .\venv\Scripts\activate    # Windows
     ```
 3.  **Install dependencies:**
+    *(Ensure you run this command inside the active `(venv)` to resolve all LangChain dependencies)*
     ```bash
     pip install -r requirements.txt 
-    # Or manually:
-    # pip install fastapi uvicorn pydantic requests langchain-google-genai python-dotenv
     ```
 
 ### **2. Configuration (.env)**
 
-Create a **`.env`** file in the root of the `Agent_Bot` directory and populate it with the following connection details:
+Create a **`.env`** file in the root of the `Agent_Bot` directory and populate it with your specific secrets and URLs.
 
 ```dotenv
-# Gemini API Key (Required for the LLM)
-GEMINI_API_KEY="YOUR_ACTUAL_GEMINI_API_KEY_HERE"
+# --- LLM & RAG Configuration ---
+GOOGLE_API_KEY="YOUR_ACTUAL_GEMINI_API_KEY_HERE"
+GEMINI_MODEL="gemini-2.5-flash"
 
-# Base URL for the other services (e.g., API Gateway or direct service ports)
+PINECONE_API_KEY="YOUR_ACTUAL_PINECONE_API_KEY_HERE"
+PINECONE_ENVIRONMENT="us-east-1-aws"
+PINECONE_INDEX_NAME="techtorque-kb"
+
+# RAG Configuration Defaults
+RAG_CHUNK_SIZE=500
+RAG_CHUNK_OVERLAP=50
+MAX_CONTEXT_LENGTH=2000
+
+# --- Microservice URLs ---
+PORT=8091
 BASE_SERVICE_URL="http://localhost:8080/api/v1" 
 
-# Service URLs - These must match the running Spring Boot/GoLang services
 AUTHENTICATION_SERVICE_URL="${BASE_SERVICE_URL}/auth"
-APPOINTMENT_SERVICE_URL="${BASE_SERVICE_URL}/appointments"
 VEHICLE_SERVICE_URL="${BASE_SERVICE_URL}/vehicles"
 PROJECT_SERVICE_URL="${BASE_SERVICE_URL}/jobs" 
 TIME_LOGGING_SERVICE_URL="${BASE_SERVICE_URL}/logs"
- File Structure and Purpose
-The Agent_Bot microservice is organized to clearly separate concerns related to application setup, LangChain logic, and inter-service communication.
-Configuration & Environment
-
-venv/: The isolated Python Virtual Environment containing all project dependencies (FastAPI, LangChain, google-genai, etc.).
-
-.env: Configuration file for local development. Stores sensitive keys (like GEMINI_API_KEY) and endpoints for dependent microservices (e.g., APPOINTMENT_SERVICE_URL). This file is ignored by Git.
-
-.gitignore: Specifies files and folders (e.g., venv/, .env, __pycache__) that Git should ignore and not track.
-
-
-Application Core & Infrastructure
-
-main.py: The primary application entry point. Initializes FastAPI, loads environment variables, defines the core /api/v1/ai/chat endpoint, and manages the overall request/response flow.
-
-service_clients.py: The service communication layer. Contains helper functions to make authenticated HTTP calls to other microservices (Auth, Appointment, Vehicle, etc.) using their configured URLs.
-
-models.py: Defines the data structures (Pydantic models) used for API requests/responses (e.g., ChatRequest, ChatResponse) and for mapping data retrieved from other microservices (e.g., Vehicle, UserContext).
-Agent Logic (LangChain)
-
-agent_core.py: The Agent's Brain. Initializes the Gemini LLM, defines the Agent's system prompt and rules, and assembles the final LangChain AgentExecutor with all defined tools.
-
-tools.py: Defines the external functions (Tools) that the LLM can call. These functions map natural language intents (e.g., "check status") to the concrete Python code that executes them.
-
-
-session_manager.py: Manages the conversational state. Contains logic (currently using an in-memory placeholder) to load, update, and save the chat history using the unique session_id.
+APPOINTMENT_SERVICE_URL="${BASE_SERVICE_URL}/appointments"
