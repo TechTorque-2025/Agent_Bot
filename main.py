@@ -1,67 +1,54 @@
-# Agent_Bot/main.py
-from fastapi import FastAPI, HTTPException
+# main.py
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from .models import ChatRequest, ChatResponse
-from .service_clients import get_user_context
-from .agent_core import run_agent
-from .session_manager import load_session, add_message_to_session
 import os
-import uuid
+import logging
 
-# 1. Load Environment Variables
-load_dotenv() 
+# Configure basic logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# 2. Initialize FastAPI Application
+# Load environment variables
+load_dotenv()
+
+# We need to import the router directly
+from routes.chatAgent import router as chatbot_router
+from config.settings import settings # Use our new settings
+
 app = FastAPI(
-    title="TechTorque AI Agent Bot", 
-    version="v1",
-    root_path="/api/v1/ai" # Set the root path as per the API design
+    title="TechTorque Unified AI Agent/RAG Service",
+    description="Unified AI Agent for Tool Use and RAG for Knowledge Retrieval.",
+    version="1.0.0"
 )
 
-# 3. Health Check endpoint
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:8080"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include the main router
+# NOTE: We use the prefix /api/v1/ai as per our original design
+app.include_router(chatbot_router, prefix="/api/v1/ai", tags=["ai_agent"])
+
+@app.get("/")
+async def root():
+    return {
+        "service": "TechTorque Unified AI Agent",
+        "status": "running",
+        "model": settings.GEMINI_MODEL,
+        "api_endpoints": "/api/v1/ai/chat",
+        "rag_endpoints": "/api/v1/ai/rag/status"
+    }
+
 @app.get("/health")
-def health_check():
-    return {"status": "Agent Bot is Running", "llm": os.getenv("GEMINI_MODEL", "gemini-2.5-flash")}
+async def health():
+    return {"status": "healthy"}
 
-# 4. Main Chat Endpoint
-@app.post("/chat", response_model=ChatResponse, summary="Send a query to the AI Agent")
-async def chat_endpoint(request: ChatRequest):
-    
-    # 1. Authentication and Context Retrieval
-    if not request.token:
-        raise HTTPException(status_code=401, detail="Authentication token required.")
-
-    user_context = get_user_context(request.token)
-    
-    if user_context.user_id == "ERROR":
-         raise HTTPException(status_code=401, detail="Invalid or expired token.")
-
-    # 2. Session ID Management
-    session_id = request.session_id if request.session_id else str(uuid.uuid4())
-    chat_history = load_session(session_id)
-    
-    # 3. Run the Agent
-    try:
-        reply = run_agent(
-            query=request.query,
-            chat_history=chat_history,
-            user_context=user_context,
-            token=request.token # Pass the token to the agent's core execution
-        )
-        
-        # 4. Save History/State
-        add_message_to_session(session_id, request.query, reply)
-
-        return ChatResponse(reply=reply, session_id=session_id)
-    
-    except Exception as e:
-        print(f"Agent Execution Error: {e}")
-        # A generic 500 error is fine here for an LLM/Agent failure
-        raise HTTPException(status_code=500, detail="The AI Agent encountered an internal error.")
-
-# --- END OF CODE ---
-
-# To run:
-# 1. Ensure other services (Auth, Appointment, etc.) are running on port 8080.
-# 2. Activate venv: venv\Scripts\activate
-# 3. Run: uvicorn main:app --reload --port 8000
+if __name__ == "__main__":
+    import uvicorn
+    # Use the port defined in our settings
+    uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, reload=True)
