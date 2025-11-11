@@ -1,38 +1,44 @@
-# Agent_Bot/tools.py
 from langchain.tools import tool
-from .service_clients import client_check_availability, client_get_active_services, client_get_time_logs
-from typing import List, Dict, Any
+from typing import Dict, Any, List
+from .microservice_client import get_microservice_client # FIX: Imported getter function
 import json
 
-# This token variable will be passed to the tools at runtime via AgentExecutor context
+# Global variable to hold the token for the duration of the agent's run
 runtime_token = "" 
 
+# FIX: Get the singleton client instance immediately for use in tools
+client = get_microservice_client() 
+
 @tool
-def check_appointment_slots_tool(date: str, service_type: str) -> str:
+async def check_appointment_slots_tool(date: str, service_type: str) -> str:
     """
     Checks the available appointment slots for a given date (YYYY-MM-DD) 
-    and a defined service_type (e.g., 'Oil Change', 'Mod Installation') by calling the Appointment Service.
+    and service_type (e.g., 'Oil Change', 'Diagnostics'). 
     Use this tool ONLY when the user asks for available times or scheduling.
     """
-    result = client_check_availability(date, service_type, runtime_token)
+    # FIX: Uses the ASYNC method on the client instance with the runtime_token
+    result = await client.get_appointment_slots(date, service_type, runtime_token)
+    
     if result.get("error"):
         return f"Error: Could not check slots due to service error: {result['error']}"
     
-    # Assuming result is a list of slot objects from the Appointment Service
-    if result and isinstance(result, list):
-        slots = [s['startTime'] for s in result if 'startTime' in s]
-        if slots:
-            return f"Available slots on {date} for {service_type}: {', '.join(slots)}. Please ask to book a specific slot."
+    slots = result.get("available_slots", [])
+    
+    if slots and isinstance(slots, list):
+        slot_times = [s['time'] for s in slots if 'time' in s]
+        if slot_times:
+            return f"Available slots on {date} for {service_type}: {', '.join(slot_times)}. Ask the user to specify a time if they want to book."
     
     return f"No available slots found on {date} for {service_type}."
 
 @tool
-def get_user_active_services_tool() -> str:
+async def get_user_active_services_tool() -> str:
     """
     Retrieves a list of all IN_PROGRESS services and projects for the current user. 
     Use this tool when the user asks for the status of their vehicle or project.
     """
-    active_items = client_get_active_services(runtime_token)
+    # FIX: Uses the ASYNC method on the client instance with the runtime_token
+    active_items = await client.get_active_services(runtime_token)
     
     if not active_items:
         return "The user currently has no active services or modification projects."
@@ -44,15 +50,17 @@ def get_user_active_services_tool() -> str:
     return summary.strip()
 
 @tool
-def get_last_work_log_tool(service_id: str) -> str:
+async def get_last_work_log_tool(service_id: str) -> str:
     """
     Retrieves the most recent time log and technician note for a specific service or project ID.
-    Use this when the user asks for detailed progress or what was done last.
+    The service_id must be provided by the user or extracted from the conversation history.
     """
-    logs = client_get_time_logs(service_id, runtime_token)
+    # FIX: Uses the ASYNC method on the client instance with the runtime_token
+    logs = await client.get_time_logs_for_service(service_id, runtime_token)
+
     if logs and isinstance(logs, list):
-        # Time logs often return newest first, but we will sort to be safe
-        logs.sort(key=lambda x: x.get('createdAt', ''), reverse=True)
+        # Sort by creation timestamp (assuming 'createdAt' is the key)
+        logs.sort(key=lambda x: x.get('createdAt', ''), reverse=True) 
         most_recent_log = logs[0]
         
         return json.dumps({
