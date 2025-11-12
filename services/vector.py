@@ -74,9 +74,11 @@ class VectorStoreService:
         """Create index if it doesn't exist"""
         if not self.pc:
             raise Exception("Pinecone client is not initialized.")
-            
+
         try:
-            existing_indexes = self.pc.list_indexes().names
+            # Get list of index names - .names() is a method, not a property
+            index_list = self.pc.list_indexes()
+            existing_indexes = [idx.name for idx in index_list] if hasattr(index_list, '__iter__') else index_list.names()
 
             if self.index_name not in existing_indexes:
                 logger.info(f"Creating new Pinecone index: {self.index_name}")
