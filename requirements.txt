@@ -22,7 +22,7 @@ fsspec==2025.10.0
 google-ai-generativelanguage==0.4.0
 google-api-core==2.28.1
 google-auth==2.42.1
-google-generativeai==0.3.2
+google-generativeai==0.8.3
 googleapis-common-protos==1.71.0
 greenlet==3.2.4
 grpcio==1.76.0
