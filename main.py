@@ -1,6 +1,5 @@
 # main.py
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 import logging
@@ -21,18 +20,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8080"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS is handled by API Gateway - no need for CORS middleware here
+# This prevents duplicate Access-Control-Allow-Origin headers
 
 # Include the main router
-# NOTE: We use the prefix /api/v1/ai as per our original design
-app.include_router(chatbot_router, prefix="/api/v1/ai", tags=["ai_agent"])
+# NOTE: API Gateway strips /api/v1/ai prefix, so we don't need it here
+app.include_router(chatbot_router, prefix="", tags=["ai_agent"])
 
 @app.get("/")
 async def root():
@@ -40,8 +33,8 @@ async def root():
         "service": "TechTorque Unified AI Agent",
         "status": "running",
         "model": settings.GEMINI_MODEL,
-        "api_endpoints": "/api/v1/ai/chat",
-        "rag_endpoints": "/api/v1/ai/rag/status"
+        "api_endpoints": "/chat (via Gateway: /api/v1/ai/chat)",
+        "rag_endpoints": "/rag/status (via Gateway: /api/v1/ai/rag/status)"
     }
 
 @app.get("/health")
