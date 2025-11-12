@@ -44,7 +44,7 @@ langchain-core==0.3.29
 langchain-google-genai==2.0.8
 langgraph==0.2.62
 langgraph-checkpoint==2.0.12
-langgraph-sdk==0.1.40
+langgraph-sdk==0.1.42
 langsmith==0.2.9
 MarkupSafe==3.0.3
 marshmallow==3.26.1
