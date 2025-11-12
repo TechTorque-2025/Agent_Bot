@@ -212,3 +212,52 @@ class DocumentService:
                 "success": False,
                 "error": str(e)
             }
+
+    def ingest_multiple_documents(self, documents: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Ingest multiple documents into the vector database
+
+        Args:
+            documents: List of document dictionaries with keys: content, title, doc_type, source
+
+        Returns:
+            Dictionary with batch ingestion results
+        """
+        results = []
+        successful = 0
+        failed = 0
+
+        for doc in documents:
+            result = self.ingest_document(
+                content=doc.get("content", ""),
+                title=doc.get("title", "Untitled"),
+                doc_type=doc.get("doc_type", "general"),
+                source=doc.get("source", "manual"),
+                additional_metadata=doc.get("metadata")
+            )
+
+            if result.get("success"):
+                successful += 1
+            else:
+                failed += 1
+
+            results.append(result)
+
+        return {
+            "total": len(documents),
+            "successful": successful,
+            "failed": failed,
+            "results": results
+        }
+
+
+# Singleton instance
+_document_service_instance = None
+
+
+def get_document_service() -> DocumentService:
+    """Get or create the document service singleton instance"""
+    global _document_service_instance
+    if _document_service_instance is None:
+        _document_service_instance = DocumentService()
+    return _document_service_instance
