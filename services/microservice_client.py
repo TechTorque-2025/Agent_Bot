@@ -47,10 +47,9 @@ class MicroserviceClient:
 
     # --- Methods used by Agent Core (Called Synchronously, requires wrapper) ---
 
-    def get_user_context(self, token: str) -> UserContext:
-        """Retrieves user profile and vehicles. Synchronous entry point for agent_core."""
-        # FIX: Use wrapper to run the async logic synchronously without blocking the FastAPI event loop
-        return asyncio.run(self._async_get_user_context(token))
+    async def get_user_context(self, token: str) -> UserContext:
+        """Retrieves user profile and vehicles. Now async to work within FastAPI event loop."""
+        return await self._async_get_user_context(token)
 
     async def _async_get_user_context(self, token: str) -> UserContext:
         """Retrieves user profile and vehicles (ASYNC helper)."""

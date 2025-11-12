@@ -66,9 +66,9 @@ class VectorStoreService:
         """Create index if it doesn't exist"""
         if not self.pc:
             raise Exception("Pinecone client is not initialized.")
-            
+
         try:
-            existing_indexes = self.pc.list_indexes().names
+            existing_indexes = [index.name for index in self.pc.list_indexes()]
 
             if self.index_name not in existing_indexes:
                 logger.info(f"Creating new Pinecone index: {self.index_name}")

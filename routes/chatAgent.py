@@ -6,6 +6,7 @@ from services.rag import get_rag_service # For RAG utility endpoints
 from services.document import get_document_service # For document ingestion
 from services.conversation import get_conversation_service # For session creation
 from datetime import datetime
+from typing import List, Dict, Any
 
 router = APIRouter()
 
