@@ -59,9 +59,9 @@ class AIAgentService:
         chat_history: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Runs the agent with all retrieved context and history."""
-        
+
         # 1. Retrieve User Context (My Original Logic)
-        user_context_data = self.ms_client.get_user_context(user_token)
+        user_context_data = await self.ms_client.get_user_context(user_token)
         user_context_str = str(user_context_data)
         
         # 2. Retrieve RAG Context (Friend's Logic)
