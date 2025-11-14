@@ -19,10 +19,10 @@ class Settings:
 
     # --- Microservice URLs (My Original Contribution) ---
     BASE_SERVICE_URL = os.getenv("BASE_SERVICE_URL", "http://localhost:8080/api/v1")
-    AUTHENTICATION_SERVICE_URL = os.getenv("AUTHENTICATION_SERVICE_URL", BASE_SERVICE_URL + "/auth")
+    AUTHENTICATION_SERVICE_URL = os.getenv("AUTHENTICATION_SERVICE_URL", BASE_SERVICE_URL + "/users")
     VEHICLE_SERVICE_URL = os.getenv("VEHICLE_SERVICE_URL", BASE_SERVICE_URL + "/vehicles")
-    PROJECT_SERVICE_URL = os.getenv("PROJECT_SERVICE_URL", BASE_SERVICE_URL + "/jobs")
-    TIME_LOGGING_SERVICE_URL = os.getenv("TIME_LOGGING_SERVICE_URL", BASE_SERVICE_URL + "/logs")
+    PROJECT_SERVICE_URL = os.getenv("PROJECT_SERVICE_URL", BASE_SERVICE_URL + "/services")
+    TIME_LOGGING_SERVICE_URL = os.getenv("TIME_LOGGING_SERVICE_URL", BASE_SERVICE_URL + "/time-logs")
 
     # --- Appointment Service (Used by both Agent and RAG) ---
     APPOINTMENT_SERVICE_URL = os.getenv("APPOINTMENT_SERVICE_URL", BASE_SERVICE_URL + "/appointments")
