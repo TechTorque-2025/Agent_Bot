@@ -31,8 +31,11 @@ app.add_middleware(
 )
 
 # Include the main router
-# NOTE: We use the prefix /api/v1/ai as per our original design
-app.include_router(chatbot_router, prefix="/api/v1/ai", tags=["ai_agent"])
+# NOTE: The API Gateway strips the /api/v1/ai prefix when forwarding requests
+# to the downstream Agent service. For the agent to receive routes correctly
+# we keep the internal router prefix blank so the gateway can forward e.g.
+# /api/v1/ai/chat -> /chat.
+app.include_router(chatbot_router, prefix="", tags=["ai_agent"])
 
 @app.get("/")
 async def root():

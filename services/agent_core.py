@@ -104,11 +104,12 @@ class AIAgentService:
                     "tool_executed": None
                 }
         
-        # 3. CRITICAL: Inject Runtime Variables into Tools
-        # This is needed because tools are defined globally but need runtime data
-        for tool in all_tools:
-            if hasattr(tool, 'runtime_token'):
-                tool.runtime_token = user_token
+        # 3. CRITICAL: Inject runtime token into the module-level tools implementation
+        # Tools rely on a global `runtime_token` variable inside services.agent_tools
+        # which the structured tools reference when calling the underlying async functions.
+        # The previous approach used an import and set the module variable directly.
+        import services.agent_tools as agent_tools_module
+        agent_tools_module.runtime_token = user_token
         
         # 4. Invoke Agent Executor (use ainvoke for async tools)
         result = await self.agent_executor.ainvoke({

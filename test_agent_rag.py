@@ -10,9 +10,15 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 # --- CONFIGURATION ---
-# Use the port defined in your settings.py (8091)
-BASE_URL = "http://localhost:8091/api/v1/ai" 
-MOCK_TOKEN = "test-jwt-token-for-customer-123" # Must be non-null for authenticated endpoints
+# Base endpoint used by these tests. Prefer the API Gateway which proxies to
+# the agent and handles authentication/authorization for downstream microservices.
+# Set the environment var AGENT_BASE_URL to override this in CI.
+import os
+
+BASE_URL = os.getenv("AGENT_BASE_URL", "http://localhost:8080/api/v1/ai")
+# Local agent fallback if API Gateway is not running
+LOCAL_AGENT_BASE = os.getenv("LOCAL_AGENT_BASE", "http://localhost:8091")
+MOCK_TOKEN = os.getenv("AGENT_TEST_TOKEN", "test-jwt-token-for-customer-123")
 
 def print_section(title):
     print(f"\n{'='*70}")
@@ -40,8 +46,9 @@ def run_test_case(name, func):
 
 def test_01_health_and_rag_status():
     """Test 1: Health Check and RAG System Status"""
-    response_health = requests.get(f"{BASE_URL}/health", timeout=5)
-    response_rag = requests.get(f"{BASE_URL}/rag/status", timeout=5)
+    headers = {"Authorization": f"Bearer {MOCK_TOKEN}"}
+    response_health = requests.get(f"{BASE_URL}/health", headers=headers, timeout=5)
+    response_rag = requests.get(f"{BASE_URL}/rag/status", headers=headers, timeout=5)
     
     if response_health.status_code != 200:
         return {"success": False, "message": f"Health check failed (Status: {response_health.status_code})"}
@@ -67,7 +74,8 @@ def test_02_ingestion_and_rag_availability(doc_id=None):
     }
     
     # Use the batch ingest endpoint for simplicity
-    response = requests.post(f"{BASE_URL}/documents/batch-ingest", json=[payload], timeout=30)
+    headers = {"Authorization": f"Bearer {MOCK_TOKEN}"}
+    response = requests.post(f"{BASE_URL}/documents/batch-ingest", json=[payload], headers=headers, timeout=30)
     
     if response.status_code != 200:
         return {"success": False, "message": f"Ingestion failed (Status: {response.status_code}). Response: {response.text}"}
@@ -86,7 +94,8 @@ def test_03_agent_tool_routing():
     query = "Can you check available appointment slots on 2025-12-15 for Oil Change service?"
     payload = {"query": query, "token": MOCK_TOKEN}
 
-    response = requests.post(f"{BASE_URL}/chat", json=payload, timeout=30)
+    headers = {"Authorization": f"Bearer {MOCK_TOKEN}"}
+    response = requests.post(f"{BASE_URL}/chat", json=payload, headers=headers, timeout=30)
 
     if response.status_code != 200:
         return {"success": False, "message": f"Chat failed (Status: {response.status_code}). Response: {response.text}"}
@@ -112,7 +121,8 @@ def test_04_rag_knowledge_retrieval():
     query = "What is the warranty period for your labor?"
     payload = {"query": query, "token": MOCK_TOKEN}
 
-    response = requests.post(f"{BASE_URL}/chat", json=payload, timeout=30)
+    headers = {"Authorization": f"Bearer {MOCK_TOKEN}"}
+    response = requests.post(f"{BASE_URL}/chat", json=payload, headers=headers, timeout=30)
 
     if response.status_code != 200:
         return {"success": False, "message": f"Chat failed (Status: {response.status_code}). Response: {response.text}"}
@@ -134,7 +144,8 @@ def test_05_context_filtering():
     query = "Who was the first president of the United States?"
     payload = {"query": query, "token": MOCK_TOKEN}
 
-    response = requests.post(f"{BASE_URL}/chat", json=payload, timeout=30)
+    headers = {"Authorization": f"Bearer {MOCK_TOKEN}"}
+    response = requests.post(f"{BASE_URL}/chat", json=payload, headers=headers, timeout=30)
 
     if response.status_code != 200:
         return {"success": False, "message": f"Chat failed (Status: {response.status_code}). Response: {response.text}"}
@@ -167,6 +178,17 @@ if __name__ == "__main__":
     print_section("STARTING AI AGENT + RAG BACKEND INTEGRATION TESTS")
     
     # 1. Check health and RAG setup
+    # If the gateway isn't running, automatically fall back to using the local agent
+    # service directly so developers can run the script without the gateway.
+    try:
+        print(f"[*] Testing via configured base URL: {BASE_URL}")
+        h = requests.get(f"{BASE_URL}/health", headers={"Authorization": f"Bearer {MOCK_TOKEN}"}, timeout=3)
+        if h.status_code != 200:
+            raise Exception("Non-200 gateway health")
+    except Exception:
+        print("[!] Gateway not reachable, trying local agent fallback...")
+        BASE_URL = LOCAL_AGENT_BASE
+        print(f"[*] Using local agent: {BASE_URL}")
     status_result = run_test_case("1. Service Health & RAG Status", test_01_health_and_rag_status)
 
     if status_result and status_result.get("rag_available"):
