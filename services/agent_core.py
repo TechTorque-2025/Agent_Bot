@@ -7,6 +7,7 @@ from config.settings import settings
 from services.agent_tools import all_tools
 from services.microservice_client import MicroserviceClient
 from services.rag import get_rag_service
+from services.token_context import token_context
 import logging
 from typing import List, Dict, Any
 
@@ -31,10 +32,16 @@ class AIAgentService:
             "Your mission is to help customers with their vehicle service needs in a warm, helpful manner.\n"
             "\n**YOUR CAPABILITIES:**\n"
             "- Answer questions about vehicle services, repairs, maintenance, and appointments\n"
-            "- Help schedule and manage service appointments\n"
-            "- Check service status and work logs for customers' vehicles\n"
-            "- Provide information about company policies, hours, and pricing\n"
+            "- Help schedule and manage service appointments (Book, Cancel, Check Slots)\n"
+            "- Manage user vehicles (List, Register, View Details)\n"
+            "- Handle custom modification projects (Request, List, View Details)\n"
+            "- Manage user profile (View, Update)\n"
+            "- Check service status and work logs\n"
             "- Give automotive advice and recommendations\n"
+            "\n**CRITICAL INSTRUCTION: CHAIN OF THOUGHT REASONING**\n"
+            "Before taking action, you MUST think step-by-step. For example:\n"
+            "- If user wants to book: 1. Check if they have a vehicle (`get_my_vehicles`). 2. If no vehicle, ask to register (`register_vehicle`). 3. If vehicle exists, check slots (`check_appointment_slots`). 4. Finally, book (`book_appointment`).\n"
+            "- If user wants to request a project: 1. Check vehicle. 2. Request project (`request_modification_project`).\n"
             "\n**CONVERSATION STYLE:**\n"
             "- Be friendly, warm, patient, and professional\n"
             "- Use emojis to make conversations more engaging and user-friendly (👋 🚗 ✅ 🔧 ⏰ 💰 😊 👍 🎉 etc.)\n"
@@ -135,10 +142,9 @@ class AIAgentService:
                     "tool_executed": None
                 }
         
-        # 3. CRITICAL: Inject Runtime Token into Tools Module
-        # Set the module-level runtime_token variable in agent_tools
-        import services.agent_tools as agent_tools_module
-        agent_tools_module.runtime_token = user_token
+        # 3. CRITICAL: Inject Runtime Token into ContextVar
+        # This ensures thread-safety for concurrent users
+        token_context.set(user_token)
         
         # 4. Invoke Agent Executor (use ainvoke for async tools)
         result = await self.agent_executor.ainvoke({

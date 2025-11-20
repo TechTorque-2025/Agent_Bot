@@ -45,6 +45,51 @@ class MicroserviceClient:
             logger.error(f"Unexpected Error from {url}: {e}")
             return {"error": str(e), "status_code": 500}
 
+    async def _make_post_request(self, url: str, token: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Internal helper for making async authenticated POST requests."""
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            response = await self._async_client.post(url, json=data, headers=headers)
+            if response.is_success:
+                return response.json()
+            try:
+                return response.json()
+            except:
+                 return {"error": f"HTTP Error {response.status_code}", "status_code": response.status_code}
+        except Exception as e:
+            logger.error(f"POST Error to {url}: {e}")
+            return {"error": str(e), "status_code": 500}
+
+    async def _make_put_request(self, url: str, token: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Internal helper for making async authenticated PUT requests."""
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            response = await self._async_client.put(url, json=data, headers=headers)
+            if response.is_success:
+                return response.json()
+            try:
+                return response.json()
+            except:
+                 return {"error": f"HTTP Error {response.status_code}", "status_code": response.status_code}
+        except Exception as e:
+            logger.error(f"PUT Error to {url}: {e}")
+            return {"error": str(e), "status_code": 500}
+
+    async def _make_delete_request(self, url: str, token: str) -> Dict[str, Any]:
+        """Internal helper for making async authenticated DELETE requests."""
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            response = await self._async_client.delete(url, headers=headers)
+            if response.is_success:
+                return {"success": True, "status_code": response.status_code}
+            try:
+                return response.json()
+            except:
+                 return {"error": f"HTTP Error {response.status_code}", "status_code": response.status_code}
+        except Exception as e:
+            logger.error(f"DELETE Error to {url}: {e}")
+            return {"error": str(e), "status_code": 500}
+
     # --- Methods used by Agent Core (Called from async context) ---
 
     async def get_user_context(self, token: str) -> UserContext:
@@ -104,7 +149,6 @@ class MicroserviceClient:
         url = f"{self.appointment_url}/availability"
         params = {"date": date, "serviceType": service_type}
         data = await self._make_get_request(url, token, params)
-        # Assuming the service returns the data directly or returns a dict with 'available_slots' key
         return data
 
     @staticmethod
@@ -128,6 +172,69 @@ class MicroserviceClient:
              return []
         
         return self._parse_logs_response(data)
+
+    # --- New Methods for Enhanced Agent Capabilities ---
+
+    # 1. Appointments
+    async def book_appointment(self, appointment_data: Dict[str, Any], token: str) -> Dict[str, Any]:
+        """Books a new appointment."""
+        return await self._make_post_request(self.appointment_url, token, appointment_data)
+
+    async def cancel_appointment(self, appointment_id: str, token: str) -> Dict[str, Any]:
+        """Cancels an appointment."""
+        url = f"{self.appointment_url}/{appointment_id}"
+        return await self._make_delete_request(url, token)
+
+    # 2. Vehicles
+    async def get_customer_vehicles(self, token: str) -> List[Dict[str, Any]]:
+        """Get all vehicles for the current user."""
+        result = await self._make_get_request(self.vehicle_url, token)
+        if isinstance(result, list):
+            return result
+        return []
+
+    async def get_vehicle_details(self, vehicle_id: str, token: str) -> Dict[str, Any]:
+        """Get details for a specific vehicle."""
+        url = f"{self.vehicle_url}/{vehicle_id}"
+        return await self._make_get_request(url, token)
+
+    async def register_vehicle(self, vehicle_data: Dict[str, Any], token: str) -> Dict[str, Any]:
+        """Register a new vehicle."""
+        return await self._make_post_request(self.vehicle_url, token, vehicle_data)
+
+    # 3. Projects
+    async def request_modification_project(self, project_data: Dict[str, Any], token: str) -> Dict[str, Any]:
+        """Request a new custom modification project."""
+        url = f"{self.project_url}/projects"
+        return await self._make_post_request(url, token, project_data)
+
+    async def get_customer_projects(self, token: str) -> List[Dict[str, Any]]:
+        """Get all projects for the current user."""
+        url = f"{self.project_url}/projects"
+        result = await self._make_get_request(url, token)
+        # API returns ApiResponse with 'data' field
+        if isinstance(result, dict) and 'data' in result and isinstance(result['data'], list):
+            return result['data']
+        return []
+
+    async def get_project_details(self, project_id: str, token: str) -> Dict[str, Any]:
+        """Get details for a specific project."""
+        url = f"{self.project_url}/projects/{project_id}"
+        result = await self._make_get_request(url, token)
+        if isinstance(result, dict) and 'data' in result:
+            return result['data']
+        return result
+
+    # 4. Profile
+    async def get_my_profile(self, token: str) -> Dict[str, Any]:
+        """Get current user profile."""
+        url = f"{self.auth_url}/users/me"
+        return await self._make_get_request(url, token)
+
+    async def update_my_profile(self, profile_data: Dict[str, Any], token: str) -> Dict[str, Any]:
+        """Update current user profile."""
+        url = f"{self.auth_url}/users/profile"
+        return await self._make_put_request(url, token, profile_data)
 
 
 # Singleton instance
