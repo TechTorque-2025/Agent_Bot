@@ -20,9 +20,10 @@ class MicroserviceClient:
     def __init__(self):
         # Initialize an AsyncClient once per instance
         self._async_client = httpx.AsyncClient(timeout=5.0) 
-        self.auth_url = settings.AUTHENTICATION_SERVICE_URL
-        self.vehicle_url = settings.VEHICLE_SERVICE_URL
-        self.project_url = settings.PROJECT_SERVICE_URL
+        # Normalize and sanitize URLs (strip whitespace and trailing slashes as needed)
+        self.auth_url = (settings.AUTHENTICATION_SERVICE_URL or "").strip()
+        self.vehicle_url = (settings.VEHICLE_SERVICE_URL or "").strip()
+        self.project_url = (settings.PROJECT_SERVICE_URL or "").strip()
         
         # FIX: Added required microservice URLs
         self.appointment_url = settings.APPOINTMENT_SERVICE_URL
@@ -65,13 +66,33 @@ class MicroserviceClient:
             headers["X-User-Subject"] = username
             headers["X-User-Roles"] = roles
             
+        # defensive trimming - remove accidental spaces
+        url = (url or "").strip()
+        logger.debug(f"Making GET request to: {url} params={params}")
         try:
             response = await self._async_client.get(url, params=params, headers=headers)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as errh:
-            logger.error(f"HTTP Error {errh.response.status_code} from {url}: {errh.response.text}")
-            return {"error": f"HTTP Error {errh.response.status_code}", "status_code": errh.response.status_code}
+            # Detailed error body may be helpful for callers - attempt to parse JSON
+            status = errh.response.status_code
+            body = None
+            try:
+                body = errh.response.json()
+            except Exception:
+                body = errh.response.text or None
+
+            logger.error(f"HTTP Error {status} from {url}: {body}")
+
+            # Return underlying error body if available, but keep a consistent shape
+            result = {"status_code": status}
+            if isinstance(body, dict):
+                # merge error body and preserve status_code
+                result.update(body)
+            else:
+                result["error"] = body or f"HTTP Error {status}"
+
+            return result
         except httpx.RequestError as errc:
             logger.error(f"Request Error to {url}: {errc}")
             return {"error": "Microservice Unreachable", "status_code": 503}
@@ -155,7 +176,7 @@ class MicroserviceClient:
         """Retrieves user profile and vehicles (ASYNC helper)."""
         
         # 1. Get User Profile (/users/me endpoint)
-        base_url = self.auth_url.rstrip('/')
+        base_url = self.auth_url.strip().rstrip('/')
         if base_url.endswith('/users'):
             url = f"{base_url}/me"
         else:
@@ -166,7 +187,7 @@ class MicroserviceClient:
             return UserContext(user_id="anonymous", full_name="Guest", role="PUBLIC", vehicles=[])
         
         # 2. Get User Vehicles (/vehicles endpoint)
-        url = self.vehicle_url.rstrip('/')
+        url = self.vehicle_url.strip().rstrip('/')
         if not url.endswith("/vehicles"):
             url = f"{url}/vehicles"
         vehicle_data = await self._make_get_request(url, token)
@@ -253,7 +274,7 @@ class MicroserviceClient:
     # 2. Vehicles
     async def get_customer_vehicles(self, token: str) -> List[Dict[str, Any]]:
         """Get all vehicles for the current user."""
-        url = self.vehicle_url.rstrip('/')
+        url = self.vehicle_url.strip().rstrip('/')
         if not url.endswith("/vehicles"):
             url = f"{url}/vehicles"
         result = await self._make_get_request(url, token)
@@ -263,7 +284,7 @@ class MicroserviceClient:
 
     async def get_vehicle_details(self, vehicle_id: str, token: str) -> Dict[str, Any]:
         """Get details for a specific vehicle."""
-        base_url = self.vehicle_url.rstrip('/')
+        base_url = self.vehicle_url.strip().rstrip('/')
         if base_url.endswith("/vehicles"):
             url = f"{base_url}/{vehicle_id}"
         else:
@@ -272,7 +293,7 @@ class MicroserviceClient:
 
     async def register_vehicle(self, vehicle_data: Dict[str, Any], token: str) -> Dict[str, Any]:
         """Register a new vehicle."""
-        url = self.vehicle_url.rstrip('/')
+        url = self.vehicle_url.strip().rstrip('/')
         if not url.endswith("/vehicles"):
             url = f"{url}/vehicles"
         return await self._make_post_request(url, token, vehicle_data)
@@ -303,7 +324,7 @@ class MicroserviceClient:
     # 4. Profile
     async def get_my_profile(self, token: str) -> Dict[str, Any]:
         """Get current user profile."""
-        base_url = self.auth_url.rstrip('/')
+        base_url = self.auth_url.strip().rstrip('/')
         if base_url.endswith('/users'):
             url = f"{base_url}/me"
         else:
@@ -312,7 +333,7 @@ class MicroserviceClient:
 
     async def update_my_profile(self, profile_data: Dict[str, Any], token: str) -> Dict[str, Any]:
         """Update current user profile."""
-        base_url = self.auth_url.rstrip('/')
+        base_url = self.auth_url.strip().rstrip('/')
         if base_url.endswith('/users'):
             url = f"{base_url}/profile"
         else:
