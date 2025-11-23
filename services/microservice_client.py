@@ -204,7 +204,7 @@ class MicroserviceClient:
             ]
         
         return UserContext(
-            user_id=user_data.get("id") or user_data.get("userId", "unknown"),
+            user_id=str(user_data.get("id") or user_data.get("userId") or "unknown"),
             full_name=user_data.get("fullName") or user_data.get("username", "unknown"),
             role=user_data.get("role", "CUSTOMER"),
             vehicles=vehicles
