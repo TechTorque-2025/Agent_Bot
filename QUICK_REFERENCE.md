@@ -39,9 +39,9 @@ docker run -p 8091:8091 --env-file .env agent-bot:latest
 docker-compose up agent-bot
 ```
 
-### Kubernetes
+### k3s (Kubernetes - lightweight)
 ```bash
-# Apply configurations (from k8s-config repo)
+# Apply configurations (from k8s-config repo) — tested on k3s
 kubectl apply -f k8s/configmaps/agent-bot-configmap.yaml
 kubectl apply -f k8s/services/agent-bot-deployment.yaml
 

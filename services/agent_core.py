@@ -2,11 +2,13 @@
 
 from langchain.agents import AgentExecutor, initialize_agent, AgentType
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from config.settings import settings
 from services.agent_tools import all_tools
 from services.microservice_client import MicroserviceClient
 from services.rag import get_rag_service
+from services.token_context import token_context
 import logging
 from typing import List, Dict, Any
 
@@ -31,10 +33,16 @@ class AIAgentService:
             "Your mission is to help customers with their vehicle service needs in a warm, helpful manner.\n"
             "\n**YOUR CAPABILITIES:**\n"
             "- Answer questions about vehicle services, repairs, maintenance, and appointments\n"
-            "- Help schedule and manage service appointments\n"
-            "- Check service status and work logs for customers' vehicles\n"
-            "- Provide information about company policies, hours, and pricing\n"
+            "- Help schedule and manage service appointments (Book, Cancel, Check Slots)\n"
+            "- Manage user vehicles (List, Register, View Details)\n"
+            "- Handle custom modification projects (Request, List, View Details)\n"
+            "- Manage user profile (View, Update)\n"
+            "- Check service status and work logs\n"
             "- Give automotive advice and recommendations\n"
+            "\n**CRITICAL INSTRUCTION: CHAIN OF THOUGHT REASONING**\n"
+            "Before taking action, you MUST think step-by-step. For example:\n"
+            "- If user wants to book: 1. Check if they have a vehicle (`get_my_vehicles`). 2. If no vehicle, ask to register (`register_vehicle`). 3. If vehicle exists, check slots (`check_appointment_slots`). 4. Finally, book (`book_appointment`).\n"
+            "- If user wants to request a project: 1. Check vehicle. 2. Request project (`request_modification_project`).\n"
             "\n**CONVERSATION STYLE:**\n"
             "- Be friendly, warm, patient, and professional\n"
             "- Use emojis to make conversations more engaging and user-friendly (👋 🚗 ✅ 🔧 ⏰ 💰 😊 👍 🎉 etc.)\n"
@@ -135,22 +143,76 @@ class AIAgentService:
                     "tool_executed": None
                 }
         
-        # 3. CRITICAL: Inject Runtime Token into Tools Module
-        # Set the module-level runtime_token variable in agent_tools
-        import services.agent_tools as agent_tools_module
-        agent_tools_module.runtime_token = user_token
+        # 3. CRITICAL: Inject Runtime Token into ContextVar
+        # This ensures thread-safety for concurrent users
+        token_context.set(user_token)
         
-        # 4. Invoke Agent Executor (use ainvoke for async tools)
-        result = await self.agent_executor.ainvoke({
-            "input": user_query,
-            "chat_history": chat_history,
-            "user_context": user_context_str, # Injected into System Prompt
-            "rag_context": rag_context_str    # Injected into System Prompt
-        })
+        # 4. Convert chat history to LangChain message objects
+        # The MessagesPlaceholder expects HumanMessage and AIMessage objects, not plain dicts
+        langchain_history = []
+        for msg in chat_history:
+            role = msg.get("role", "").lower()
+            content = msg.get("content", "")
+            if role == "user" or role == "human":
+                langchain_history.append(HumanMessage(content=content))
+            elif role == "assistant" or role == "ai":
+                langchain_history.append(AIMessage(content=content))
         
-        # 5. Determine Tool Execution Status
+        # 5. Invoke Agent Executor (try async, fallback to sync if async is not available)
+        raw_result = None
+        try:
+            # some AgentExecutor versions expose an async method named `ainvoke`
+            if hasattr(self.agent_executor, "ainvoke"):
+                raw_result = await self.agent_executor.ainvoke({
+                    "input": user_query,
+                    "chat_history": langchain_history,
+                    "user_context": user_context_str, # Injected into System Prompt
+                    "rag_context": rag_context_str    # Injected into System Prompt
+                })
+            else:
+                # Fallback: call the synchronous `run` in a thread if async method missing
+                logger.info("AgentExecutor does not expose `ainvoke`, using sync `run` in an executor as fallback")
+                import asyncio as _asyncio
+                raw_result = await _asyncio.to_thread(
+                    self.agent_executor.run,
+                    {
+                        "input": user_query,
+                        "chat_history": langchain_history,
+                        "user_context": user_context_str,
+                        "rag_context": rag_context_str
+                    }
+                )
+
+        except Exception as ex:
+            # Log exception with stack trace for easier debugging and re-raise
+            logger.exception("AgentExecutor invocation failed")
+            raise
+        
+        # 6. Determine Tool Execution Status
         tool_executed = None
-        intermediate_steps = result.get('intermediate_steps', [])
+
+        # Normalize raw_result into the expected structure
+        intermediate_steps = []
+        result = {}
+
+        try:
+            if isinstance(raw_result, dict):
+                # When agent returns a dict-like response
+                result = raw_result
+                intermediate_steps = result.get('intermediate_steps', []) or []
+            elif isinstance(raw_result, tuple) and len(raw_result) >= 2:
+                # Common return shape when return_intermediate_steps=True -> (output, intermediate_steps)
+                result = {"output": raw_result[0], "intermediate_steps": raw_result[1]}
+                intermediate_steps = raw_result[1] or []
+            elif isinstance(raw_result, str):
+                # Simple string output
+                result = {"output": raw_result}
+            else:
+                # Any other shape - convert to string for output
+                result = {"output": str(raw_result)}
+        except Exception:
+            logger.exception("Failed to normalize agent executor output; converting to string")
+            result = {"output": str(raw_result)}
 
         if intermediate_steps:
             # intermediate_steps is a list of tuples: (AgentAction, tool_output)
