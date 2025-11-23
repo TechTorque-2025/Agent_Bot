@@ -2,7 +2,8 @@ import httpx
 import os
 import logging
 import asyncio
-from typing import List, Dict, Any, Optional
+import jwt
+from typing import List, Dict, Any, Optional, Tuple
 from config.settings import settings
 from models.chat import UserContext, VehicleInfo
 
@@ -19,25 +20,79 @@ class MicroserviceClient:
     def __init__(self):
         # Initialize an AsyncClient once per instance
         self._async_client = httpx.AsyncClient(timeout=5.0) 
-        self.auth_url = settings.AUTHENTICATION_SERVICE_URL
-        self.vehicle_url = settings.VEHICLE_SERVICE_URL
-        self.project_url = settings.PROJECT_SERVICE_URL
+        # Normalize and sanitize URLs (strip whitespace and trailing slashes as needed)
+        self.auth_url = (settings.AUTHENTICATION_SERVICE_URL or "").strip()
+        self.vehicle_url = (settings.VEHICLE_SERVICE_URL or "").strip()
+        self.project_url = (settings.PROJECT_SERVICE_URL or "").strip()
         
         # FIX: Added required microservice URLs
         self.appointment_url = settings.APPOINTMENT_SERVICE_URL
         self.time_log_url = settings.TIME_LOGGING_SERVICE_URL
 
+    def _extract_user_from_token(self, token: str) -> Tuple[str, str]:
+        """
+        Extract username and roles from JWT token.
+        Returns (username, roles_csv_string)
+        """
+        try:
+            # Decode without verification (we trust our own tokens)
+            payload = jwt.decode(token, options={"verify_signature": False})
+            username = payload.get("sub", "")
+            
+            # Extract roles - they might be in different formats
+            roles = payload.get("roles", [])
+            if isinstance(roles, list):
+                # Remove ROLE_ prefix if present
+                cleaned_roles = [r.replace("ROLE_", "") for r in roles]
+                roles_str = ",".join(cleaned_roles)
+            elif isinstance(roles, str):
+                roles_str = roles.replace("ROLE_", "")
+            else:
+                roles_str = ""
+                
+            logger.debug(f"Extracted from JWT - username: {username}, roles: {roles_str}")
+            return username, roles_str
+        except Exception as e:
+            logger.warning(f"Failed to extract user from token: {e}")
+            return "", ""
+
     async def _make_get_request(self, url: str, token: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
         """Internal helper for making async authenticated GET requests."""
         headers = {"Authorization": f"Bearer {token}"}
+        
+        # Add X-User headers for direct service calls
+        username, roles = self._extract_user_from_token(token)
+        if username:
+            headers["X-User-Subject"] = username
+            headers["X-User-Roles"] = roles
+            
+        # defensive trimming - remove accidental spaces
+        url = (url or "").strip()
+        logger.debug(f"Making GET request to: {url} params={params}")
         try:
-            # FIX: Use async client and await
             response = await self._async_client.get(url, params=params, headers=headers)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as errh:
-            logger.error(f"HTTP Error {errh.response.status_code} from {url}: {errh.response.text}")
-            return {"error": f"HTTP Error {errh.response.status_code}", "status_code": errh.response.status_code}
+            # Detailed error body may be helpful for callers - attempt to parse JSON
+            status = errh.response.status_code
+            body = None
+            try:
+                body = errh.response.json()
+            except Exception:
+                body = errh.response.text or None
+
+            logger.error(f"HTTP Error {status} from {url}: {body}")
+
+            # Return underlying error body if available, but keep a consistent shape
+            result = {"status_code": status}
+            if isinstance(body, dict):
+                # merge error body and preserve status_code
+                result.update(body)
+            else:
+                result["error"] = body or f"HTTP Error {status}"
+
+            return result
         except httpx.RequestError as errc:
             logger.error(f"Request Error to {url}: {errc}")
             return {"error": "Microservice Unreachable", "status_code": 503}
@@ -48,6 +103,13 @@ class MicroserviceClient:
     async def _make_post_request(self, url: str, token: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
         """Internal helper for making async authenticated POST requests."""
         headers = {"Authorization": f"Bearer {token}"}
+        
+        # Add X-User headers for direct service calls
+        username, roles = self._extract_user_from_token(token)
+        if username:
+            headers["X-User-Subject"] = username
+            headers["X-User-Roles"] = roles
+            
         try:
             response = await self._async_client.post(url, json=data, headers=headers)
             if response.is_success:
@@ -63,6 +125,13 @@ class MicroserviceClient:
     async def _make_put_request(self, url: str, token: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
         """Internal helper for making async authenticated PUT requests."""
         headers = {"Authorization": f"Bearer {token}"}
+        
+        # Add X-User headers for direct service calls
+        username, roles = self._extract_user_from_token(token)
+        if username:
+            headers["X-User-Subject"] = username
+            headers["X-User-Roles"] = roles
+            
         try:
             response = await self._async_client.put(url, json=data, headers=headers)
             if response.is_success:
@@ -78,6 +147,13 @@ class MicroserviceClient:
     async def _make_delete_request(self, url: str, token: str) -> Dict[str, Any]:
         """Internal helper for making async authenticated DELETE requests."""
         headers = {"Authorization": f"Bearer {token}"}
+        
+        # Add X-User headers for direct service calls
+        username, roles = self._extract_user_from_token(token)
+        if username:
+            headers["X-User-Subject"] = username
+            headers["X-User-Roles"] = roles
+            
         try:
             response = await self._async_client.delete(url, headers=headers)
             if response.is_success:
@@ -99,13 +175,23 @@ class MicroserviceClient:
     async def _async_get_user_context(self, token: str) -> UserContext:
         """Retrieves user profile and vehicles (ASYNC helper)."""
         
-        # 1. Get User Profile (/auth/me endpoint)
-        user_data = await self._make_get_request(f"{self.auth_url}/me", token)
+        # 1. Get User Profile (/users/me endpoint)
+        base_url = self.auth_url.strip().rstrip('/')
+        if base_url.endswith('/users'):
+            url = f"{base_url}/me"
+        else:
+            url = f"{base_url}/users/me"
+            
+        user_data = await self._make_get_request(url, token)
         if "error" in user_data:
             return UserContext(user_id="anonymous", full_name="Guest", role="PUBLIC", vehicles=[])
         
         # 2. Get User Vehicles (/vehicles endpoint)
-        vehicle_data = await self._make_get_request(f"{self.vehicle_url}", token)
+        url = self.vehicle_url.strip().rstrip('/')
+        if not url.endswith("/vehicles"):
+            url = f"{url}/vehicles"
+        vehicle_data = await self._make_get_request(url, token)
+        
         vehicles = []
         if isinstance(vehicle_data, list):
             vehicles = [
@@ -118,7 +204,7 @@ class MicroserviceClient:
             ]
         
         return UserContext(
-            user_id=user_data.get("id") or user_data.get("userId", "unknown"),
+            user_id=str(user_data.get("id") or user_data.get("userId") or "unknown"),
             full_name=user_data.get("fullName") or user_data.get("username", "unknown"),
             role=user_data.get("role", "CUSTOMER"),
             vehicles=vehicles
@@ -188,19 +274,29 @@ class MicroserviceClient:
     # 2. Vehicles
     async def get_customer_vehicles(self, token: str) -> List[Dict[str, Any]]:
         """Get all vehicles for the current user."""
-        result = await self._make_get_request(self.vehicle_url, token)
+        url = self.vehicle_url.strip().rstrip('/')
+        if not url.endswith("/vehicles"):
+            url = f"{url}/vehicles"
+        result = await self._make_get_request(url, token)
         if isinstance(result, list):
             return result
         return []
 
     async def get_vehicle_details(self, vehicle_id: str, token: str) -> Dict[str, Any]:
         """Get details for a specific vehicle."""
-        url = f"{self.vehicle_url}/{vehicle_id}"
+        base_url = self.vehicle_url.strip().rstrip('/')
+        if base_url.endswith("/vehicles"):
+            url = f"{base_url}/{vehicle_id}"
+        else:
+            url = f"{base_url}/vehicles/{vehicle_id}"
         return await self._make_get_request(url, token)
 
     async def register_vehicle(self, vehicle_data: Dict[str, Any], token: str) -> Dict[str, Any]:
         """Register a new vehicle."""
-        return await self._make_post_request(self.vehicle_url, token, vehicle_data)
+        url = self.vehicle_url.strip().rstrip('/')
+        if not url.endswith("/vehicles"):
+            url = f"{url}/vehicles"
+        return await self._make_post_request(url, token, vehicle_data)
 
     # 3. Projects
     async def request_modification_project(self, project_data: Dict[str, Any], token: str) -> Dict[str, Any]:
@@ -228,12 +324,20 @@ class MicroserviceClient:
     # 4. Profile
     async def get_my_profile(self, token: str) -> Dict[str, Any]:
         """Get current user profile."""
-        url = f"{self.auth_url}/users/me"
+        base_url = self.auth_url.strip().rstrip('/')
+        if base_url.endswith('/users'):
+            url = f"{base_url}/me"
+        else:
+            url = f"{base_url}/users/me"
         return await self._make_get_request(url, token)
 
     async def update_my_profile(self, profile_data: Dict[str, Any], token: str) -> Dict[str, Any]:
         """Update current user profile."""
-        url = f"{self.auth_url}/users/profile"
+        base_url = self.auth_url.strip().rstrip('/')
+        if base_url.endswith('/users'):
+            url = f"{base_url}/profile"
+        else:
+            url = f"{base_url}/users/profile"
         return await self._make_put_request(url, token, profile_data)
 
 

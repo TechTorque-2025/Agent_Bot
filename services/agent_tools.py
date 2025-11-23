@@ -4,8 +4,14 @@ from .microservice_client import get_microservice_client
 from services.token_context import token_context
 import json
 
-# Get the singleton client instance
-client = get_microservice_client()
+# Attempt to get the singleton client instance - make import resilient (tests may not have httpx installed)
+try:
+    client = get_microservice_client()
+except Exception as e:
+    # Tests will patch `services.agent_tools.client` as needed; avoid hard failures during import
+    import logging
+    logging.getLogger(__name__).warning("Microservice client not available at import time: %s", e)
+    client = None
 
 # --- 1. Appointment Tools ---
 
@@ -76,7 +82,14 @@ async def get_my_vehicles_tool() -> str:
     
     summary = "Your Vehicles:\n"
     for v in vehicles:
-        summary += f"- {v.get('make')} {v.get('model')} ({v.get('year')}) - Plate: {v.get('licensePlate')} - ID: {v.get('id')}\n"
+        # tolerate different JSON shapes from services (camelCase vs snake_case)
+        make = v.get('make') or v.get('Make') or ''
+        model = v.get('model') or v.get('Model') or ''
+        year = v.get('year') or v.get('Year') or ''
+        plate = v.get('licensePlate') or v.get('license_plate') or v.get('plate') or ''
+        vid = v.get('vehicleId') or v.get('id') or v.get('vehicle_id') or ''
+
+        summary += f"- {make} {model} ({year}) - Plate: {plate} - ID: {vid}\n"
     return summary
 
 async def get_vehicle_details_tool(vehicle_id: str) -> str:

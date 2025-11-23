@@ -46,18 +46,32 @@ async def test_book_appointment_tool():
 
 @pytest.mark.asyncio
 async def test_get_my_vehicles_tool():
+    # Case A: service returns camelCase fields
     with patch('services.agent_tools.client') as mock_client:
         mock_client.get_customer_vehicles = AsyncMock(return_value=[
             {"id": "v1", "make": "Toyota", "model": "Camry", "year": 2020, "licensePlate": "ABC-123"}
         ])
-        
+
         token_context.set("user_token")
-        
+
         result = await get_my_vehicles_tool()
-        
+
         assert "Toyota Camry" in result
         assert "ABC-123" in result
         mock_client.get_customer_vehicles.assert_called_once_with("user_token")
+
+    # Case B: service returns snake_case fields (some services may use snake_case)
+    with patch('services.agent_tools.client') as mock_client2:
+        mock_client2.get_customer_vehicles = AsyncMock(return_value=[
+            {"vehicle_id": "v2", "make": "Honda", "model": "Civic", "year": 2018, "license_plate": "XYZ-789"}
+        ])
+
+        token_context.set("user_token")
+        result2 = await get_my_vehicles_tool()
+
+        assert "Honda Civic" in result2
+        assert "XYZ-789" in result2
+        mock_client2.get_customer_vehicles.assert_called_once_with("user_token")
 
 @pytest.mark.asyncio
 async def test_concurrency_context():
